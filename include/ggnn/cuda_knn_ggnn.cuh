@@ -227,7 +227,7 @@ struct GGNN {
   }
 
   template <int BLOCK_DIM_X = 32, int MAX_ITERATIONS = 400, int CACHE_SIZE = 512, int SORTED_SIZE = 256, bool DIST_STATS = false>
-  void queryLayer() {
+  void queryLayer(const int bs) {
     dataset.template checkForDuplicatesInGroundTruth<measure, ValueT>(KQuery);
 
     cudaEvent_t start, stop;
@@ -237,16 +237,36 @@ struct GGNN {
 
     const auto& shard = ggnn_gpu_instance.ggnn_shards.at(0);
 
-    cudaEventRecord(start, shard.stream);
-    ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>();
-    cudaEventRecord(stop, shard.stream);
+    if (dataset.N_query % bs != 0) {
+      VLOG(0) << "batch size does not divide the number of query points \n";
+      exit(1);
+    }
+    VLOG(0) << "query_num divided into " << dataset.N_query / bs << " batches \n";
+
+    float total_time = 0;
+    for (unsigned j = 0; j < dataset.N_query; j += bs) {
+      cudaEventRecord(start, shard.stream);
+      ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(bs, j);
+      cudaEventRecord(stop, shard.stream);
+      cudaEventSynchronize(stop);
+      cudaEventElapsedTime(&milliseconds, start, stop);
+      total_time += milliseconds;
+      VLOG(0) << "[GPU: " << ggnn_gpu_instance.gpu_id << "] query part: " << 0 << " => ms: " << milliseconds << "\n";
+    }
+    VLOG(0) << "Query_per_second: " << dataset.N_query / (total_time / 1000) << "\n";
+
+    // cudaEventRecord(start, shard.stream);
+    // ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(10000, 0);
+    // // ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(1000, 1000);
+    // cudaEventRecord(stop, shard.stream);
+
     ggnn_gpu_instance.ggnn_query.sortAsync(shard.stream);
     ggnn_results.loadAsync(ggnn_gpu_instance.ggnn_query, 0, shard.stream);
 
     cudaEventSynchronize(stop);
 
-    cudaEventElapsedTime(&milliseconds, start, stop);
-    VLOG(0) << "[GPU: " << ggnn_gpu_instance.gpu_id << "] query part: " << 0 << " => ms: " << milliseconds << " [" << dataset.N_query << " points query -> " << milliseconds*1000.0f/dataset.N_query << " us/point] \n";
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // VLOG(0) << "[GPU: " << ggnn_gpu_instance.gpu_id << "] query part: " << 0 << " => ms: " << milliseconds << " [" << dataset.N_query << " points query -> " << milliseconds*1000.0f/dataset.N_query << " us/point] \n";
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

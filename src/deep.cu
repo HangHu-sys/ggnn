@@ -15,7 +15,7 @@ limitations under the License.
 /*
   @Hang:
   Example command to run this file:
-  ./sift1m 
+    ./deep_KB24_S32_KQ20 --dbname=Deep1M --graph_filename=../data/GPU_GGNN_index/Deep1M_KB24_S32_KQ10 --mode=1 --bs=2000
 */
 #include <cuda.h>
 #include <cuda_profiler_api.h>
@@ -35,26 +35,35 @@ limitations under the License.
 #include "ggnn/utils/cuda_knn_utils.cuh"
 
 DEFINE_string(dbname, "", "dataset name");
-DEFINE_string(base_filename, "", "path to file with base vectors");
-DEFINE_string(query_filename, "", "path to file with perform_query vectors");
-DEFINE_string(groundtruth_filename, "",
-              "path to file with groundtruth vectors");
 DEFINE_string(graph_filename, "",
               "path to file that contains the serialized graph");
 DEFINE_double(tau, 0.5, "Parameter tau");
-DEFINE_int32(factor, 1000000, "Factor");
-DEFINE_int32(base, 1, "N_base: base x factor");
 DEFINE_int32(refinement_iterations, 2, "Number of refinement iterations");
 DEFINE_int32(gpu_id, 0, "GPU id");
 DEFINE_int32(mode, 0, "0: build, 1: query");
 DEFINE_int32(bs, 10000, "batch size");
-DEFINE_int32(tau_query, 0.5, "Parameter tau for query");
+DEFINE_double(tau_query, 0.5, "Parameter tau for query");
 // DEFINE_bool(grid_search, false,
 //             "Perform queries for a wide range of parameters.");
 
+#ifndef KBUILD
+  #define KBUILD 24
+#endif
+#ifndef SEG
+  #define SEG 32
+#endif
+#ifndef KQUERY
+  #define KQUERY 10
+#endif
+#ifndef MAXITER
+  #define MAXITER 400
+#endif
+
+
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
-  google::LogToStderr();
+  // google::LogToStderr();
+  google::SetLogSymlink(google::INFO, "");
 
   gflags::SetUsageMessage(
       "GGNN: Graph-based GPU Nearest Neighbor Search\n"
@@ -64,14 +73,23 @@ int main(int argc, char* argv[]) {
   gflags::SetVersionString("1.0.0");
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  std::string base_filename;
-  std::string query_filename;
+  std::string base_filename = "/mnt/scratch/wenqi/Faiss_experiments/deep1b/base.1B.fbin";
+  std::string query_filename = "/mnt/scratch/wenqi/Faiss_experiments/deep1b/query.public.10K.fbin";
   std::string groundtruth_filename;
-  std::string graph_filename;
+  size_t N_base;
+  if (FLAGS_dbname == "Deep1M") {
+    groundtruth_filename = "/mnt/scratch/wenqi/Faiss_experiments/deep1b/gt_idx_1M.ibin";
+    N_base = 1e6;
+  } else if (FLAGS_dbname == "Deep10M") {
+    groundtruth_filename = "/mnt/scratch/wenqi/Faiss_experiments/deep1b/gt_idx_10M.ibin";
+    N_base = 1e7;
+  } else {
+    LOG(FATAL) << "Unknown dataset " << FLAGS_dbname;
+  }
 
-  CHECK(file_exists(FLAGS_base_filename))
+  CHECK(file_exists(base_filename))
       << "File for base vectors has to exist";
-  CHECK(file_exists(FLAGS_query_filename))
+  CHECK(file_exists(query_filename))
       << "File for perform_query vectors has to exist";
 
   CHECK_GE(FLAGS_tau, 0) << "Tau has to be bigger or equal 0.";
@@ -86,7 +104,7 @@ int main(int argc, char* argv[]) {
   /// data type for addressing points (needs to be able to represent N)
   using KeyT = int32_t;
   /// data type of the dataset (e.g., char, int, float)
-  using BaseT = uint8_t;
+  using BaseT = float;
   /// data type of computed distances
   using ValueT = float;
   /// data type for addressing base-vectors (needs to be able to represent N*D)
@@ -95,28 +113,28 @@ int main(int argc, char* argv[]) {
   /// N*KBuild)
   using GAddrT = uint64_t;
   //
-  // dataset configuration (here: SIFT1M)
+  // dataset configuration (here: Deep1M)
   //
   /// dimension of the dataset
-  const int D = 128;
+  const int D = 96;
   /// distance measure (Euclidean or Cosine)
   const DistanceMeasure measure = Euclidean;
   //
   // search-graph configuration
   //
   /// number of neighbors per point in the graph
-  const int KBuild = 24;
+  const int KBuild = KBUILD;
   /// maximum number of inverse/symmetric links (KBuild / 2 usually works best)
   const int KF = KBuild / 2;
   /// segment/batch size (needs to be > KBuild-KF)
-  const int S = 32;
+  const int S = SEG;
   /// graph height / number of layers (4 usually performs best)
   const int L = 4;
   //
   // query configuration
   //
   /// number of neighbors to search for
-  const int KQuery = 10;
+  const int KQuery = KQUERY;
 
   assert(KBuild - KF < S);
 
@@ -136,14 +154,17 @@ int main(int argc, char* argv[]) {
   }
   cudaSetDevice(FLAGS_gpu_id);
 
-  const size_t N_base = FLAGS_base * FLAGS_factor;
 
   typedef GGNN<measure, KeyT, ValueT, GAddrT, BaseT, BAddrT, D, KBuild, KF, KQuery, S> GGNN;
 
-  GGNN m_ggnn{FLAGS_base_filename, FLAGS_query_filename,
-              FLAGS_groundtruth_filename, L, static_cast<float>(FLAGS_tau), N_base};
+  GGNN m_ggnn{base_filename, query_filename,
+              groundtruth_filename, L, static_cast<float>(FLAGS_tau), N_base};
 
   m_ggnn.ggnnMain(FLAGS_graph_filename, FLAGS_refinement_iterations);
+
+  // Build mode stops here.
+  if (FLAGS_mode == 0)
+    return 0;
 
   auto query_function = [&m_ggnn](const float tau_query) {
     cudaMemcpyToSymbol(c_tau_query, &tau_query, sizeof(float));
@@ -154,7 +175,7 @@ int main(int argc, char* argv[]) {
     // m_ggnn.queryLayer<32, 200, 256, 64>();
     // better for C@10 > 99%
     LOG(INFO) << "regular query (good for C@10)";
-    m_ggnn.queryLayer<32, 400, 448, 64>(FLAGS_bs);
+    m_ggnn.queryLayer<32, MAXITER, 448, 64>(FLAGS_bs);
     // expensive, can get to 99.99% C@10
     // m_ggnn.queryLayer<128, 2000, 2048, 256>();
   };

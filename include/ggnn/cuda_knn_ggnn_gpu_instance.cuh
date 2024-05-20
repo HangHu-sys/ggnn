@@ -472,7 +472,7 @@ struct GGNNGPUInstance {
   // graph operations
 
   template <int BLOCK_DIM_X = 32, int MAX_ITERATIONS = 400, int CACHE_SIZE = 512, int SORTED_SIZE = 256, bool DIST_STATS = false>
-  void queryLayer(const int shard_id = 0) const {
+  void queryLayer(const int bs, const int N_offset, const int shard_id = 0) const {
     CHECK_CUDA(cudaSetDevice(gpu_id));
     const auto& shard = ggnn_shards.at(shard_id%ggnn_shards.size());
 
@@ -496,8 +496,8 @@ struct GGNNGPUInstance {
 
     query_kernel.d_nn1_stats = shard.d_nn1_stats;
 
-    query_kernel.N = dataset->N_query;
-    query_kernel.N_offset = 0;
+    query_kernel.N = bs;
+    query_kernel.N_offset = N_offset;
 
     query_kernel.d_dist_stats = m_dist_statistics;
 

@@ -171,6 +171,7 @@ struct GGNNResults {
     int cKQuery_including_duplicates = 0;
     int rKQuery = 0;
     int rKQuery_including_duplicates = 0;
+    int c10 = 0;
 
     for (int n = 0; n < dataset->N_query; n++) {
       const uint8_t endTop1 = dataset->top1DuplicateEnd.at(n);
@@ -195,6 +196,7 @@ struct GGNNResults {
             }
             if (k_gt < KQuery) ++cKQuery;
             ++cKQuery_including_duplicates;
+            if (k_gt < 10 && k_result < 10) ++c10;
             continue;
           }
         }
@@ -213,6 +215,7 @@ struct GGNNResults {
     LOG(INFO) << "r@" << KQuery << ": " << rKQuery * inv_num_points
               << " +duplicates: "
               << rKQuery_including_duplicates * inv_num_points;
+    LOG(INFO) << "c@10: " << c10 * inv_num_points / 10;
   }
 };
 

@@ -11,12 +11,6 @@ limitations under the License.
 ==============================================================================*/
 // Authors: Fabian Groh, Lukas Ruppert, Patrick Wieschollek, Hendrik P.A. Lensch
 //
-
-/*
-  @Hang:
-  Example command to run this file:
-  ./sift1m 
-*/
 #include <cuda.h>
 #include <cuda_profiler_api.h>
 #include <cuda_runtime.h>
@@ -34,7 +28,6 @@ limitations under the License.
 #include "ggnn/utils/cuda_knn_dataset.cuh"
 #include "ggnn/utils/cuda_knn_utils.cuh"
 
-DEFINE_string(dbname, "", "dataset name");
 DEFINE_string(base_filename, "", "path to file with base vectors");
 DEFINE_string(query_filename, "", "path to file with perform_query vectors");
 DEFINE_string(groundtruth_filename, "",
@@ -42,15 +35,10 @@ DEFINE_string(groundtruth_filename, "",
 DEFINE_string(graph_filename, "",
               "path to file that contains the serialized graph");
 DEFINE_double(tau, 0.5, "Parameter tau");
-DEFINE_int32(factor, 1000000, "Factor");
-DEFINE_int32(base, 1, "N_base: base x factor");
 DEFINE_int32(refinement_iterations, 2, "Number of refinement iterations");
 DEFINE_int32(gpu_id, 0, "GPU id");
-DEFINE_int32(mode, 0, "0: build, 1: query");
-DEFINE_int32(bs, 10000, "batch size");
-DEFINE_int32(tau_query, 0.5, "Parameter tau for query");
-// DEFINE_bool(grid_search, false,
-//             "Perform queries for a wide range of parameters.");
+DEFINE_bool(grid_search, false,
+            "Perform queries for a wide range of parameters.");
 
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
@@ -63,11 +51,6 @@ int main(int argc, char* argv[]) {
       "(c) 2020 Computer Graphics University of Tuebingen");
   gflags::SetVersionString("1.0.0");
   google::ParseCommandLineFlags(&argc, &argv, true);
-
-  std::string base_filename;
-  std::string query_filename;
-  std::string groundtruth_filename;
-  std::string graph_filename;
 
   CHECK(file_exists(FLAGS_base_filename))
       << "File for base vectors has to exist";
@@ -86,14 +69,14 @@ int main(int argc, char* argv[]) {
   /// data type for addressing points (needs to be able to represent N)
   using KeyT = int32_t;
   /// data type of the dataset (e.g., char, int, float)
-  using BaseT = uint8_t;
+  using BaseT = float;
   /// data type of computed distances
   using ValueT = float;
   /// data type for addressing base-vectors (needs to be able to represent N*D)
-  using BAddrT = uint64_t;
+  using BAddrT = uint32_t;
   /// data type for addressing the graph (needs to be able to represent
   /// N*KBuild)
-  using GAddrT = uint64_t;
+  using GAddrT = uint32_t;
   //
   // dataset configuration (here: SIFT1M)
   //
@@ -118,7 +101,8 @@ int main(int argc, char* argv[]) {
   /// number of neighbors to search for
   const int KQuery = 10;
 
-  assert(KBuild - KF < S);
+  static_assert(KBuild - KF < S,
+                "there are not enough points to fill the local neighbor list!");
 
   LOG(INFO) << "Using the following parameters " << KBuild << " (KBuild) " << KF
             << " (KF) " << S << " (S) " << L << " (L) " << D << " (D) ";
@@ -136,12 +120,11 @@ int main(int argc, char* argv[]) {
   }
   cudaSetDevice(FLAGS_gpu_id);
 
-  const size_t N_base = FLAGS_base * FLAGS_factor;
-
-  typedef GGNN<measure, KeyT, ValueT, GAddrT, BaseT, BAddrT, D, KBuild, KF, KQuery, S> GGNN;
-
+  typedef GGNN<measure, KeyT, ValueT, GAddrT, BaseT, BAddrT, D, KBuild, KF,
+               KQuery, S>
+      GGNN;
   GGNN m_ggnn{FLAGS_base_filename, FLAGS_query_filename,
-              FLAGS_groundtruth_filename, L, static_cast<float>(FLAGS_tau), N_base};
+              FLAGS_groundtruth_filename, L, static_cast<float>(FLAGS_tau)};
 
   m_ggnn.ggnnMain(FLAGS_graph_filename, FLAGS_refinement_iterations);
 
@@ -150,19 +133,29 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "--";
     LOG(INFO) << "Query with tau_query " << tau_query;
     // faster for C@1 = 99%
-    // LOG(INFO) << "fast query (good for C@1)";
-    // m_ggnn.queryLayer<32, 200, 256, 64>();
+    LOG(INFO) << "fast query (good for C@1)";
+    m_ggnn.queryLayer<32, 200, 256, 64>();
     // better for C@10 > 99%
     LOG(INFO) << "regular query (good for C@10)";
-    m_ggnn.queryLayer<32, 400, 448, 64>(FLAGS_bs);
+    m_ggnn.queryLayer<32, 400, 448, 64>();
     // expensive, can get to 99.99% C@10
     // m_ggnn.queryLayer<128, 2000, 2048, 256>();
   };
 
-  LOG(INFO) << "--";
-  LOG(INFO) << "90, 95, 99% R@1, 99% C@10 (using -tau 0.5 "
-                "-refinement_iterations 2):";
-  query_function(FLAGS_tau_query);
+  if (FLAGS_grid_search) {
+    LOG(INFO) << "--";
+    LOG(INFO) << "grid-search:";
+    for (int i = 0; i < 70; ++i) query_function(i * 0.01f);
+    for (int i = 7; i <= 20; ++i) query_function(i * 0.1f);
+  } else {  // by default, just execute a few queries
+    LOG(INFO) << "--";
+    LOG(INFO) << "90, 95, 99% R@1, 99% C@10 (using -tau 0.5 "
+                 "-refinement_iterations 2):";
+    query_function(0.34f);
+    query_function(0.41f);
+    query_function(0.51f);
+    query_function(0.64f);
+  }
 
   printf("done! \n");
   gflags::ShutDownCommandLineFlags();
