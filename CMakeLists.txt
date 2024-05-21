@@ -29,10 +29,10 @@ message("CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
 # configurations for specific datasets
 # TODO: generate from template using CMake?
 
-set(KBUILD_VALUES 24 40) # 24 40
-set(SEG_VALUES 32) # 32 64
+set(KBUILD_VALUES 64) # 24 40
+set(SEG_VALUES 64) # 32 64
 set(KQUERY_VALUES 10) # 10 20 40
-set(MAXITER_VALUES 200) # 200 400 800
+set(MAXITER_VALUES 400) # 200 400 800
 
 foreach(KBUILD ${KBUILD_VALUES})
   foreach(SEG ${SEG_VALUES})
