@@ -21,7 +21,9 @@ limitations under the License.
 // if not define SIFT or DEEP then define SIFT
 #ifndef SIFT
   #ifndef DEEP
-    #define SIFT
+    #ifndef SPACEV
+      #define SIFT
+    #endif
   #endif
 #endif
 
@@ -48,21 +50,7 @@ class XVecsLoader : public Loader<ValueT> {
       DLOG(INFO) << "Open " << path << " with " << this->num_elements << " "
                 << this->dimension << "-dim vectors.";
     }
-  #endif
-  #ifdef DEEP
-    explicit XVecsLoader(const std::string& path) : Loader<ValueT>(path) {
-      this->hnd->seekg(0, std::ios::beg);
-      this->hnd->read(reinterpret_cast<char*>(&this->num_elements), sizeof(int));
-    
-      // find dimension
-      this->hnd->read(reinterpret_cast<char*>(&this->dimension), sizeof(int));
 
-      DLOG(INFO) << "Open " << path << " with " << this->num_elements << " "
-                << this->dimension << "-dim vectors.";
-    }
-  #endif
-
-  #ifdef SIFT
     void load(ValueT* dst, size_t skip, size_t num) override {
       DLOG(INFO) << "Loading " << num << " vectors starting at " << skip
                 << " ...";
@@ -85,7 +73,45 @@ class XVecsLoader : public Loader<ValueT> {
       DLOG(INFO) << "Done";
     }
   #endif
+
   #ifdef DEEP
+    explicit XVecsLoader(const std::string& path) : Loader<ValueT>(path) {
+      this->hnd->seekg(0, std::ios::beg);
+      this->hnd->read(reinterpret_cast<char*>(&this->num_elements), sizeof(int));
+    
+      // find dimension
+      this->hnd->read(reinterpret_cast<char*>(&this->dimension), sizeof(int));
+
+      DLOG(INFO) << "Open " << path << " with " << this->num_elements << " "
+                << this->dimension << "-dim vectors.";
+    }
+
+    void load(ValueT* dst, size_t skip, size_t num) override {
+      DLOG(INFO) << "Loading " << num << " vectors starting at " << skip
+                << " ...";
+
+      for (size_t n = 0; n < num; ++n) {
+        this->hnd->read(reinterpret_cast<char*>(dst),
+                        this->dimension * sizeof(ValueT));
+        dst += this->dimension;
+      }
+
+      DLOG(INFO) << "Done";
+    }
+  #endif
+
+  #ifdef SPACEV
+    explicit XVecsLoader(const std::string& path) : Loader<ValueT>(path) {
+      this->hnd->seekg(0, std::ios::beg);
+      this->hnd->read(reinterpret_cast<char*>(&this->num_elements), sizeof(int));
+    
+      // find dimension
+      this->hnd->read(reinterpret_cast<char*>(&this->dimension), sizeof(int));
+
+      DLOG(INFO) << "Open " << path << " with " << this->num_elements << " "
+                << this->dimension << "-dim vectors.";
+    }
+
     void load(ValueT* dst, size_t skip, size_t num) override {
       DLOG(INFO) << "Loading " << num << " vectors starting at " << skip
                 << " ...";

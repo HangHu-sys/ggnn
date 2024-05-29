@@ -29,10 +29,10 @@ message("CUDA_NVCC_FLAGS: ${CUDA_NVCC_FLAGS}")
 # configurations for specific datasets
 # TODO: generate from template using CMake?
 
-set(KBUILD_VALUES 32) # 24 40
+set(KBUILD_VALUES 32 64) # 24 40
 set(SEG_VALUES 64) # 32 64
 set(KQUERY_VALUES 10) # 10 20 40
-set(MAXITER_VALUES 64 100 200 400) # 200 400 800
+set(MAXITER_VALUES 400) # 200 400 800
 
 foreach(KBUILD ${KBUILD_VALUES})
   foreach(SEG ${SEG_VALUES})
@@ -62,7 +62,19 @@ foreach(KBUILD ${KBUILD_VALUES})
         )
         target_compile_definitions(deep_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} PRIVATE KBUILD=${KBUILD} SEG=${SEG} KQUERY=${KQUERY} MAXITER=${MAXITER})
         target_compile_definitions(deep_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} PRIVATE DEEP)
-        target_link_libraries(deep_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} ${CUDA_curand_LIBRARY} glog::glog) 
+        target_link_libraries(deep_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} ${CUDA_curand_LIBRARY} glog::glog)
+
+        # SPACEV
+        cuda_add_executable(spacev_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} src/spacev.cu)
+        target_include_directories(spacev_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER}
+          PRIVATE
+          ${CUDA_NVCC_FLAGS}
+          ${CUB_INCLUDE_PATH}
+          ${CMAKE_CURRENT_SOURCE_DIR}/include
+        )
+        target_compile_definitions(spacev_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} PRIVATE KBUILD=${KBUILD} SEG=${SEG} KQUERY=${KQUERY} MAXITER=${MAXITER})
+        target_compile_definitions(spacev_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} PRIVATE SPACEV)
+        target_link_libraries(spacev_KB${KBUILD}_S${SEG}_KQ${KQUERY}_MI${MAXITER} ${CUDA_curand_LIBRARY} glog::glog)
       endforeach()
     endforeach()
   endforeach()
