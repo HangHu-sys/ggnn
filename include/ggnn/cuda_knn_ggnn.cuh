@@ -248,6 +248,12 @@ struct GGNN {
       cudaEventRecord(start, shard.stream);
       ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(bs, j);
       cudaEventRecord(stop, shard.stream);
+
+      ggnn_gpu_instance.ggnn_query.sortAsync(shard.stream);
+      ggnn_results.loadAsync(ggnn_gpu_instance.ggnn_query, 0, shard.stream);
+
+      cudaEventRecord(stop, shard.stream);
+
       cudaEventSynchronize(stop);
       cudaEventElapsedTime(&milliseconds, start, stop);
       total_time += milliseconds;
@@ -260,8 +266,7 @@ struct GGNN {
     // // ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(1000, 1000);
     // cudaEventRecord(stop, shard.stream);
 
-    ggnn_gpu_instance.ggnn_query.sortAsync(shard.stream);
-    ggnn_results.loadAsync(ggnn_gpu_instance.ggnn_query, 0, shard.stream);
+
 
     cudaEventSynchronize(stop);
 
