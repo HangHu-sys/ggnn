@@ -42,6 +42,7 @@ DEFINE_int32(refinement_iterations, 2, "Number of refinement iterations");
 DEFINE_int32(gpu_id, 0, "GPU id");
 DEFINE_int32(mode, 0, "0: build, 1: query");
 DEFINE_int32(bs, 10000, "batch size");
+DEFINE_int32(inf_search, 0, "0: normal search, 1: infinte search");
 DEFINE_double(tau_query, 0.5, "Parameter tau for query");
 // DEFINE_bool(grid_search, false,
 //             "Perform queries for a wide range of parameters.");
@@ -183,7 +184,20 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "--";
   LOG(INFO) << "90, 95, 99% R@1, 99% C@10 (using -tau 0.5 "
                 "-refinement_iterations 2):";
-  query_function(FLAGS_tau_query);
+
+  if (FLAGS_inf_search == 0) {
+    query_function(FLAGS_tau_query);
+  }
+  else {
+    printf("Infinite search begins. Now you can measure the energy consumption.\n");
+    double counter = 0;
+    while(true){
+      if (std::fmod(counter, 100) == 0)
+        printf("Loop counter: %f\n", counter);
+      counter += 1;
+      query_function(FLAGS_tau_query);
+    }
+  }
 
   printf("done! \n");
   gflags::ShutDownCommandLineFlags();

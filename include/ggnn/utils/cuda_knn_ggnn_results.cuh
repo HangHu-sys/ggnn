@@ -164,7 +164,7 @@ struct GGNNResults {
     VLOG(0) << "[CPU] partial merge completed. " << cpu_ms.count() << " ms.";
   }
 
-  void evaluateResults() {
+  void evaluateResults(int bs) {
     int c1 = 0;
     int c1_including_duplicates = 0;
     int cKQuery = 0;
@@ -173,7 +173,9 @@ struct GGNNResults {
     int rKQuery_including_duplicates = 0;
     int c10 = 0;
 
-    for (int n = 0; n < dataset->N_query; n++) {
+    int valid_Nquery = (dataset->N_query / bs) * bs;
+
+    for (int n = 0; n < valid_Nquery; n++) {
       const uint8_t endTop1 = dataset->top1DuplicateEnd.at(n);
       const uint8_t endTopK = dataset->topKDuplicateEnd.at(n);
 
@@ -203,7 +205,7 @@ struct GGNNResults {
       }
     }
 
-    const float inv_num_points = 1.0f / dataset->N_query;
+    const float inv_num_points = 1.0f / valid_Nquery;
 
     LOG(INFO) << "c@1 (=r@1): " << c1 * inv_num_points
               << " +duplicates: " << c1_including_duplicates * inv_num_points;

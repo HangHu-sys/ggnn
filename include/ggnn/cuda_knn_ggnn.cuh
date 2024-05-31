@@ -237,14 +237,14 @@ struct GGNN {
 
     const auto& shard = ggnn_gpu_instance.ggnn_shards.at(0);
 
-    if (dataset.N_query % bs != 0) {
-      VLOG(0) << "batch size does not divide the number of query points \n";
-      exit(1);
-    }
+    // if (dataset.N_query % bs != 0) {
+    //   VLOG(0) << "batch size does not divide the number of query points \n";
+    //   exit(1);
+    // }
     VLOG(0) << "query_num divided into " << dataset.N_query / bs << " batches \n";
 
     float total_time = 0;
-    for (unsigned j = 0; j < dataset.N_query; j += bs) {
+    for (unsigned j = 0; j <= dataset.N_query - bs; j += bs) {
       cudaEventRecord(start, shard.stream);
       ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(bs, j);
       cudaEventRecord(stop, shard.stream);
@@ -261,13 +261,6 @@ struct GGNN {
     }
     VLOG(0) << "Query_per_second: " << dataset.N_query / (total_time / 1000) << "\n";
 
-    // cudaEventRecord(start, shard.stream);
-    // ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(10000, 0);
-    // // ggnn_gpu_instance.template queryLayer<BLOCK_DIM_X, MAX_ITERATIONS, CACHE_SIZE, SORTED_SIZE, DIST_STATS>(1000, 1000);
-    // cudaEventRecord(stop, shard.stream);
-
-
-
     cudaEventSynchronize(stop);
 
     // cudaEventElapsedTime(&milliseconds, start, stop);
@@ -278,7 +271,7 @@ struct GGNN {
 
     cudaStreamSynchronize(shard.stream);
     ggnn_results.merge();
-    ggnn_results.evaluateResults();
+    ggnn_results.evaluateResults(bs);
   }
 
   template <int BLOCK_DIM_X = 32, int MAX_ITERATIONS = 400, int CACHE_SIZE = 512, int SORTED_SIZE = 256, int BEST_SIZE = 128, bool DIST_STATS = false>
